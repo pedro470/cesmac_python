@@ -9,8 +9,6 @@ struct Semaforo {
     unsigned long tempoEstadoAtual;
 };
 
-unsigned long tempoDelay;
-unsigned long tempoDecorrido;
 Semaforo semaforo1;
 Semaforo semaforo2;
 Semaforo semaforoPedestre;
@@ -18,15 +16,14 @@ Semaforo semaforoPedestre;
 void acendeVermelho(Semaforo *semaforo);
 void acendeAmarelo(Semaforo *semaforo);
 void acendeVerde(Semaforo *semaforo);
-void acendePedestre(Semaforo *semaforo);
-void cicloAcionamentoPedestre(Semaforo *semaforo);
-void cicloSinalAmarelo(Semaforo *semaforo1, Semaforo *semaforo2);
-void cicloSinalVerde(Semaforo *semaforo1, Semaforo *semaforo2);
+void pedestreAcionado(Semaforo *semaforoPedestre, Semaforo *semaforoRua1, Semaforo *semaforoRua2);
 
 int botao = 5;
 bool pedestre = false;
-unsigned long tempoAtual;
-unsigned long tempoAnterior;
+bool sinal_amarelo = false;
+bool pedestre_amarelo = false;
+bool pedestre_aceso_sinal_1 = false;
+bool pedestre_aceso_sinal_2 = false;
 
 void acendeVermelho(Semaforo *semaforo) {
     digitalWrite(semaforo->vermelho, HIGH);
@@ -46,66 +43,16 @@ void acendeVerde(Semaforo *semaforo) {
     digitalWrite(semaforo->verde, HIGH);
 }
 
-void acendePedestre(Semaforo *semaforo) {
-    digitalWrite(semaforo->vermelho, LOW);
-    digitalWrite(semaforo->verde, HIGH);
-    delay(semaforo->tempoVerde);
-    digitalWrite(semaforo->vermelho, HIGH);
-    digitalWrite(semaforo->verde, LOW);
-}
-
-void cicloAcionamentoPedestre(Semaforo *semaforo) {
-    acendeVerde(semaforo);
-    delay(semaforo->tempoVerde);
-    
-    acendeAmarelo(semaforo);
-    delay(semaforo->tempoAmarelo);
-    
-    acendeVermelho(semaforo);
-
-    acendePedestre(&semaforoPedestre);
-}
-
-void cicloSinalAmarelo(Semaforo *semaforo1, Semaforo *semaforo2) {
-    tempoDelay = semaforo1->tempoAmarelo - (millis() - semaforo1->tempoDecorrido);
-    delay(tempoDelay);
-    acendeVermelho(semaforo1);
-    cicloAcionamentoPedestre(semaforo2);
-    acendeVerde(semaforo2);
-    pedestre = false;
-    semaforo2->tempoDecorrido = millis();
-    semaforo1->tempoDecorrido = millis();
-}
-
-void cicloSinalVerde(Semaforo *semaforo1, Semaforo *semaforo2) {
-    tempoDelay = semaforo1->tempoVerde - (millis() - semaforo1->tempoDecorrido);
-    delay(tempoDelay);
-    acendeAmarelo(semaforo1);
-    delay(semaforo1->tempoAmarelo);
-    acendeVermelho(semaforo1);
-    acendePedestre(&semaforoPedestre);
-    pedestre = false;
-    acendeVerde(semaforo2);
-    semaforo2->tempoDecorrido = millis();
-    semaforo1->tempoDecorrido = millis();
-}
-
-void pedestreAcionado() {
-    if (digitalRead(semaforo1.amarelo) == HIGH || digitalRead(semaforo2.amarelo) == HIGH) {
-        if (digitalRead(semaforo1.amarelo) == HIGH) {
-            cicloSinalAmarelo(&semaforo1, &semaforo2);
-        }
-        else if (digitalRead(semaforo2.amarelo) == HIGH) {
-            cicloSinalAmarelo(&semaforo2, &semaforo1);
-        }
-    }
-    else {
-        if (digitalRead(semaforo1.verde) == HIGH) {
-            cicloSinalVerde(&semaforo1, &semaforo2);
-        }
-        else if (digitalRead(semaforo2.verde) == HIGH) {
-            cicloSinalVerde(&semaforo2, &semaforo1);
-        }
+void pedestreAcionado(Semaforo *semaforoPedestre, Semaforo *semaforoRua1, Semaforo *semaforoRua2) {
+    semaforoPedestre->tempoEstadoAtual = millis() - semaforoPedestre->tempoDecorrido;
+    if (semaforoPedestre->tempoEstadoAtual >= semaforoPedestre->tempoVerde) {
+        pedestre_aceso_sinal_1 = false;
+        pedestre_aceso_sinal_2 = false;
+        pedestre = false;
+        acendeVermelho(semaforoPedestre);
+        acendeVerde(semaforoRua1);
+        semaforoRua1->tempoDecorrido = millis();
+        semaforoRua2->tempoDecorrido = millis();
     }
 }
 
@@ -129,6 +76,8 @@ void setup() {
     semaforoPedestre.vermelho = 12;
     semaforoPedestre.verde = 13;
     semaforoPedestre.tempoVerde = 5000;
+    semaforoPedestre.tempoDecorrido = 0;
+
     pinMode(semaforo1.vermelho, OUTPUT);
     pinMode(semaforo1.amarelo, OUTPUT);
     pinMode(semaforo1.verde, OUTPUT);
@@ -148,19 +97,36 @@ void setup() {
 }
 
 void loop() {
-    tempoAtual = millis();
-    if (pedestre == true) {
-        pedestreAcionado();
+    sinal_amarelo = digitalRead(semaforo1.amarelo) || digitalRead(semaforo2.amarelo);
+    if ((sinal_amarelo == true) && (digitalRead(botao) == HIGH) && (pedestre == false) && (pedestre_amarelo == false)){
+        pedestre_amarelo = true;
     }
-    if (digitalRead(botao) == HIGH && pedestre == false) {
+    else if ((digitalRead(botao) == HIGH) && (pedestre_amarelo == false) && (pedestre == false)){
         pedestre = true;
+    }
+    else if (pedestre_aceso_sinal_1 == true) {
+        pedestreAcionado(&semaforoPedestre, &semaforo1, &semaforo2);
+    }
+    else if (pedestre_aceso_sinal_2 == true) {
+        pedestreAcionado(&semaforoPedestre, &semaforo2, &semaforo1);
     }
     else {
         if (digitalRead(semaforo1.vermelho) == HIGH) {
             semaforo1.tempoEstadoAtual = millis() - semaforo1.tempoDecorrido;
             if (semaforo1.tempoEstadoAtual >= semaforo1.tempoVermelho) {
-                acendeVerde(&semaforo1);
-                semaforo1.tempoDecorrido = millis();
+                if (pedestre == true){
+                    pedestre_aceso_sinal_1 = true;
+                    acendeVerde(&semaforoPedestre);
+                    semaforoPedestre.tempoDecorrido = millis();
+                }
+                else {
+                    if (pedestre_amarelo == true){
+                        pedestre_amarelo = false;
+                        pedestre = true;
+                        acendeVerde(&semaforo1);
+                        semaforo1.tempoDecorrido = millis();
+                    }
+                }
             }
         }   
         else if (digitalRead(semaforo1.amarelo) == HIGH) {
@@ -180,8 +146,20 @@ void loop() {
         if (digitalRead(semaforo2.vermelho) == HIGH) {
             semaforo2.tempoEstadoAtual = millis() - semaforo2.tempoDecorrido;
             if (semaforo2.tempoEstadoAtual >= semaforo2.tempoVermelho) {
-                acendeVerde(&semaforo2);
-                semaforo2.tempoDecorrido = millis();
+                
+                if (pedestre == true){
+                    pedestre_aceso_sinal_2 = true;
+                    acendeVerde(&semaforoPedestre);
+                    semaforoPedestre.tempoDecorrido = millis();
+                }
+                else {
+                    if (pedestre_amarelo == true){
+                        pedestre_amarelo = false;
+                        pedestre = true;
+                    }
+                    acendeVerde(&semaforo2);
+                    semaforo2.tempoDecorrido = millis();
+                }
             }
         }
         else if (digitalRead(semaforo2.amarelo) == HIGH) {
